@@ -1,38 +1,35 @@
 package com.terran4j.commons.util;
 
-import java.text.SimpleDateFormat;
-import java.util.*;
-
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.core.JsonParser;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.PropertyNamingStrategy;
 import com.fasterxml.jackson.databind.SerializationFeature;
-import com.google.gson.Gson;
-import com.google.gson.GsonBuilder;
-import com.google.gson.JsonArray;
-import com.google.gson.JsonElement;
-import com.google.gson.JsonObject;
-import com.google.gson.JsonPrimitive;
+import com.google.gson.*;
 import com.terran4j.commons.util.config.ConfigElement;
+import org.apache.commons.lang3.StringUtils;
+
+import java.text.SimpleDateFormat;
+import java.util.*;
 
 public class Jsons {
-    
+
     private static final Gson gson = new GsonBuilder().setPrettyPrinting().create();
-    
+
     private static final com.google.gson.JsonParser parser = new com.google.gson.JsonParser();
 
     private static final ObjectMapper objectMapper = createObjectMapper();
-    
-    public static final ObjectMapper createObjectMapper(){
+
+    public static final ObjectMapper createObjectMapper() {
         ObjectMapper objectMapper = new ObjectMapper();
 
         objectMapper.setPropertyNamingStrategy(PropertyNamingStrategy.LOWER_CAMEL_CASE);
-        
+
         // 属性为空时（包括 null, 空串，空集合，空对象），不参与序列化。
         objectMapper.setSerializationInclusion(JsonInclude.Include.NON_EMPTY);
-        
+
         // Date 对象在序列化时，格式为 yyyy-MM-dd HH:mm:ss 。
         objectMapper.setDateFormat(new SimpleDateFormat("yyyy-MM-dd HH:mm:ss"));
 
@@ -43,27 +40,27 @@ public class Jsons {
 
         // json串以良好的格式输出。
         objectMapper.configure(SerializationFeature.INDENT_OUTPUT, true);
-        
+
         // 当属性为空或有问题时不参与序列化。
         objectMapper.configure(SerializationFeature.FAIL_ON_EMPTY_BEANS, false);
-        
+
         // 未知的属性不参与反序列化。
         objectMapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
-        
+
         return objectMapper;
     }
 
     public static final ObjectMapper getObjectMapper() {
         return objectMapper;
     }
-    
+
     public static final JsonElement parseJson(String jsonText) {
         return parser.parse(jsonText);
     }
 
     /**
      * 将xml转化为json
-     * 
+     *
      * @param element XML对象
      * @return JSON对象
      */
@@ -109,7 +106,7 @@ public class Jsons {
 
         return json;
     }
-    
+
     public static String format(JsonElement json) {
         String prettyJsonText = gson.toJson(json);
         return prettyJsonText;
@@ -117,7 +114,7 @@ public class Jsons {
 
     /**
      * 格式化
-     * 
+     *
      * @param uglyJsonText 未格式化的 json 串。
      * @return 格式化的 json 串。
      */
@@ -142,6 +139,21 @@ public class Jsons {
             result.put(key, value);
         }
         return result;
+    }
+
+    public static String toJsonText(Object obj) throws JsonProcessingException {
+        if (obj == null) {
+            return null;
+        }
+
+        return objectMapper.writeValueAsString(obj);
+    }
+
+    public static <T> T toObject(String jsonText, Class<T> clazz) throws JsonProcessingException {
+        if (StringUtils.isBlank(jsonText)) {
+            return null;
+        }
+        return objectMapper.readValue(jsonText, clazz);
     }
 
     public static Object toObject(JsonElement element) {

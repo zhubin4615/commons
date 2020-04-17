@@ -1,12 +1,17 @@
 package com.terran4j.commons.hi;
 
-import com.google.gson.*;
 import com.terran4j.commons.util.Strings;
-import com.terran4j.commons.util.value.JsonValueSource;
+import com.terran4j.commons.util.config.ConfigElement;
+import com.terran4j.commons.util.config.JsonConfigElement;
+import com.terran4j.commons.util.config.XmlConfigElement;
+import com.terran4j.commons.util.error.BusinessException;
+import com.terran4j.commons.util.error.ErrorCodes;
+import com.terran4j.commons.util.security.MD5Util;
 import com.terran4j.commons.util.value.ValueSource;
 import com.terran4j.commons.util.value.ValueSources;
+import org.apache.commons.collections.MapUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.context.ApplicationContext;
-import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.RequestMethod;
 
 import java.security.InvalidParameterException;
@@ -14,8 +19,6 @@ import java.util.*;
 import java.util.concurrent.CountDownLatch;
 
 public final class Request {
-
-    private static final JsonParser parser = new JsonParser();
 
     private final Session session;
 
@@ -26,6 +29,17 @@ public final class Request {
     private final Map<String, String> params = new HashMap<>();
 
     private final Map<String, String> inputs = new HashMap<>();
+
+    private String signParamKey = null;
+
+    private String signSecretKey = null;
+
+    private String signBuildKey = null;
+
+    /**
+     * add by mark for plain content.
+     */
+    private StringBuffer content = new StringBuffer();
 
     private final ValueSources<String, String> context;
 
@@ -86,6 +100,31 @@ public final class Request {
 
     public Request param(String key, String value) {
         params.put(key, value);
+        return this;
+    }
+
+    public Request sign(String secretKey) {
+        return sign(secretKey, "key", "sign");
+    }
+
+    public Request sign(String secretKey, String buildKey, String paramKey) {
+        if (StringUtils.isBlank(secretKey)) {
+            throw new NullPointerException("secretKey is null.");
+        }
+        if (StringUtils.isBlank(buildKey)) {
+            throw new NullPointerException("buildKey is null.");
+        }
+        if (StringUtils.isBlank(paramKey)) {
+            throw new NullPointerException("paramKey is null.");
+        }
+        this.signParamKey = paramKey.trim();
+        this.signSecretKey = secretKey.trim();
+        this.signBuildKey = buildKey.trim();
+        return this;
+    }
+
+    public Request content(String content) {
+        this.content = new StringBuffer(content);
         return this;
     }
 
@@ -154,7 +193,7 @@ public final class Request {
     }
 
     public String parseValue(String value) {
-        if (StringUtils.isEmpty(value)) {
+        if (StringUtils.isBlank(value)) {
             return value;
         }
         return Strings.format(value, context, "{", "}", null);
@@ -182,7 +221,7 @@ public final class Request {
     /**
      * @return 实际的参数值
      */
-    public Map<String, String> getActualParams() {
+    public Map<String, String> getActualParams() throws BusinessException {
         // 从入参中取值。
         final Map<String, String> actualParams = new HashMap<>();
         Iterator<String> it = params.keySet().iterator();
@@ -197,7 +236,20 @@ public final class Request {
 
         Map<String, String> actionParams = parseValues(action.getParams());
         actionParams.putAll(actualParams);
+
+        buildSignParam(actionParams);
+
         return actionParams;
+    }
+
+    /**
+     * @return
+     */
+    public StringBuffer getActualContent() {
+        StringBuffer sb = new StringBuffer();
+        sb.append(this.content);
+        sb.trimToSize();
+        return sb;
     }
 
     public Map<String, String> getActualHeaders() {
@@ -219,7 +271,29 @@ public final class Request {
         return newMap;
     }
 
-    public Response exe() throws HttpException {
+    private void buildSignParam(Map<String, String> params)
+            throws BusinessException {
+        if (signSecretKey == null || signParamKey == null || signBuildKey == null) {
+            return;
+        }
+
+        if (MapUtils.isEmpty(params)) {
+            return;
+        }
+
+        if (params.containsKey(signParamKey)) {
+            throw new BusinessException(ErrorCodes.INVALID_PARAM)
+                    .put("signParamKey", signParamKey)
+                    .setMessage("参数key与签名参数重复：${signParamKey}");
+        }
+
+        String secretKey = String.format("&%s=%s", signBuildKey, signSecretKey);
+        String signValue = MD5Util.signature(params, secretKey).toUpperCase();
+        params.put(signParamKey, signValue);
+
+    }
+
+    public Response exe() throws BusinessException {
 
         // 获取实际的 URL。
         String actualURL = getActualURL();
@@ -228,10 +302,11 @@ public final class Request {
         // 获取实际的入参。
         final Map<String, String> actualParams = getActualParams();
         request.setParam(actualParams);
+        request.setContent(this.content.toString());
 
         RequestMethod method = RequestMethod.GET;
         String methodName = action.getMethod();
-        if (StringUtils.hasText(methodName)) {
+        if (StringUtils.isNotBlank(methodName)) {
             method = RequestMethod.valueOf(methodName);
             if (method == null) {
                 String msg = String.format("http method[%s] not supported in action: %s",
@@ -240,6 +315,9 @@ public final class Request {
             }
         }
         request.setMethod(method);
+
+        request.setPostBody(action.getPostBody());
+        request.setResponseBody(action.getResponseBody());
 
         Map<String, String> actualHeaders = getActualHeaders();
         request.setHeaders(actualHeaders);
@@ -253,28 +331,23 @@ public final class Request {
             response = listener.afterExecute(request, response);
         }
 
-        JsonElement result;
-        try {
-            result = parser.parse(response);
-        } catch (JsonSyntaxException e) {
-            // 不是 json 串，就按普通的字符串来处理。
-            result = new JsonPrimitive(response);
+        ConfigElement root = null;
+        if ("XML".equalsIgnoreCase(request.getResponseBody())) {
+            root = new XmlConfigElement(response);
+        } else {
+            root = new JsonConfigElement(response);
         }
 
         List<Write> writes = action.getWrites();
         if (writes != null && writes.size() > 0) {
-            JsonObject resultObject = null;
-            if (result.isJsonObject()) {
-                resultObject = result.getAsJsonObject();
-            }
-            context.push(new JsonValueSource(resultObject));
+            context.push(root);
             for (Write write : writes) {
                 write.doWrite(session, context);
             }
             context.pop();
         }
 
-        return new Response(result, session);
+        return new Response(root, session);
     }
 
 }

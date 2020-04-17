@@ -2,6 +2,7 @@ package com.terran4j.commons.hi;
 
 import org.apache.commons.collections4.MapUtils;
 import org.apache.http.client.HttpClient;
+import org.apache.http.client.ResponseHandler;
 import org.apache.http.client.methods.*;
 import org.apache.http.client.utils.URIBuilder;
 import org.apache.http.entity.ContentType;
@@ -25,11 +26,17 @@ public final class HttpRequest {
 
     private final String url;
 
-    private final Map<String, String> headers = new HashMap<String, String>();
+    private final Map<String, String> headers = new HashMap<>();
 
-    private final Map<String, String> params = new HashMap<String, String>();
+    private final Map<String, String> params = new HashMap<>();
+
+    private StringBuffer content = new StringBuffer();
 
     private RequestMethod method = RequestMethod.GET;
+
+    private String postBody;
+
+    private String responseBody;
 
     public RequestMethod getMethod() {
         return method;
@@ -63,6 +70,11 @@ public final class HttpRequest {
         return this;
     }
 
+    public HttpRequest setContent(String content) {
+        this.content = new StringBuffer(content);
+        return this;
+    }
+
     public Map<String, String> getParams() {
         return this.params;
     }
@@ -77,6 +89,32 @@ public final class HttpRequest {
         return this;
     }
 
+    public static final String toXml(Map<String, String> params) {
+        StringBuffer sb = new StringBuffer();
+        sb.append("<xml>");
+        Iterator<String> it = params.keySet().iterator();
+        while (it.hasNext()) {
+            String key = it.next();
+            String value = params.get(key);
+            sb.append("\t<").append(key).append(">")
+                    .append("<![CDATA[").append(value).append("]]>")
+                    .append("</").append(key).append(">");
+        }
+        sb.append("</xml>");
+        return sb.toString();
+    }
+
+    private static final void addParams(URIBuilder uriBuilder, Map<String, String> params) {
+        if (params.size() > 0) {
+            Iterator<String> it = params.keySet().iterator();
+            while (it.hasNext()) {
+                String key = it.next();
+                String value = params.get(key);
+                uriBuilder.addParameter(key, value);
+            }
+        }
+    }
+
     public String execute() throws HttpException {
         HttpUriRequest httpRequest = null;
         try {
@@ -88,15 +126,33 @@ public final class HttpRequest {
                 httpRequest = httpGet;
             } else if (method == RequestMethod.POST) {
                 final HttpPost httpPost = new HttpPost(url);
-                if (MapUtils.isNotEmpty(params)) {
+                if (this.content.length() > 0) {
                     StringBuilder sb = new StringBuilder();
-                    sb.append(toUrlQuery(params));
+                    sb.append(this.content);
+                    String content = sb.toString();
+                    if (log.isInfoEnabled()) {
+                        log.info("Http Post Content:\n{}", content);
+                    }
+                    ContentType contentType = ContentType.TEXT_PLAIN
+                            .withCharset(Charset.forName(ApacheHttpClientBuilder.CHARSET));
+                    httpPost.setEntity(new StringEntity(content, contentType));
+                    System.out.println(httpPost);
+                } else if (MapUtils.isNotEmpty(params)) {
+                    ContentType contentType = null;
+                    StringBuilder sb = new StringBuilder();
+                    if ("XML".equalsIgnoreCase(postBody)) {
+                        sb.append(toXml(params));
+                        contentType = ContentType.TEXT_XML
+                                .withCharset(Charset.forName(ApacheHttpClientBuilder.CHARSET));
+                    } else {
+                        sb.append(toUrlQuery(params));
+                        contentType = ContentType.APPLICATION_FORM_URLENCODED
+                                .withCharset(Charset.forName(ApacheHttpClientBuilder.CHARSET));
+                    }
                     String content = sb.toString();
                     if (log.isInfoEnabled()) {
                         log.info("Http Post Body:\n{}", content);
                     }
-                    ContentType contentType = ContentType.APPLICATION_FORM_URLENCODED
-                            .withCharset(Charset.forName(ApacheHttpClientBuilder.CHARSET));
                     httpPost.setEntity(new StringEntity(content, contentType));
                 }
                 httpRequest = httpPost;
@@ -137,32 +193,21 @@ public final class HttpRequest {
             }
         }
 
+        ResponseHandler<String> responseHandler = new ApacheHttpClientBuilder.DefaultResponseHandler();
+
         try {
             long t0 = System.currentTimeMillis();
-            String response = httpClient.execute(httpRequest,
-                    new ApacheHttpClientBuilder.DefaultResponseHandler());
+            String response = httpClient.execute(httpRequest, responseHandler);
             long t = System.currentTimeMillis() - t0;
             if (log.isInfoEnabled()) {
-                log.info("request curl:\n{}\nresponse:\n{}\nspend {}ms.",
-                        toCurl(httpRequest), response, t);
+                log.info("request spend {}ms, response:\n{}", t, response);
             }
             return response;
         } catch (Exception e) {
-            log.error("http failed: " +e.getMessage(), e);
+            log.error("http failed: " + e.getMessage(), e);
             throw new HttpException(HttpErrorCode.HTTP_REQUEST_ERROR, e)
                     .put("curl", toCurl(httpRequest))
                     .as(HttpException.class);
-        }
-    }
-
-    private static final void addParams(URIBuilder uriBuilder, Map<String, String> params) {
-        if (params.size() > 0) {
-            Iterator<String> it = params.keySet().iterator();
-            while (it.hasNext()) {
-                String key = it.next();
-                String value = params.get(key);
-                uriBuilder.addParameter(key, value);
-            }
         }
     }
 
@@ -218,4 +263,19 @@ public final class HttpRequest {
         return sb.toString();
     }
 
+    public String getPostBody() {
+        return postBody;
+    }
+
+    public void setPostBody(String postBody) {
+        this.postBody = postBody;
+    }
+
+    public String getResponseBody() {
+        return responseBody;
+    }
+
+    public void setResponseBody(String responseBody) {
+        this.responseBody = responseBody;
+    }
 }

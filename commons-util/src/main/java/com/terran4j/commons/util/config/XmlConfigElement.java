@@ -84,54 +84,18 @@ public class XmlConfigElement implements ConfigElement {
 		this.element = element;
 		classLoader = getClass().getClassLoader();
 	}
-	
-	public Object createObject(String classAttriName) throws BusinessException {
-		String className = element.getAttribute(classAttriName);
-		try {
-			Class<?> clazz = classLoader.loadClass(className);
-			return clazz.newInstance();
-		} catch (ClassNotFoundException e) {
-			throw new BusinessException(CommonErrorCode.CONFIG_ERROR, e).put("className", className).put("element",
-					getXml());
-		} catch (InstantiationException e) {
-			throw new BusinessException(CommonErrorCode.CONFIG_ERROR, e).put("className", className).put("element",
-					getXml());
-		} catch (IllegalAccessException e) {
-			throw new BusinessException(CommonErrorCode.CONFIG_ERROR, e).put("className", className).put("element",
-					getXml());
-		}
-	}
 
-	public String attr(String attriName) {
+    @Override
+    public int size() {
+        return 0; // XML 没有数组结构，因此个数一律返回 0 .
+    }
+
+    public String attr(String attriName) {
 		String value = element.getAttribute(attriName);
 		if (StringUtils.isEmpty(value)) {
 			return null;
 		}
 		return value;
-	}
-
-	public String attr(String attriName, String defaultValue) {
-		String value = attr(attriName);
-		if (value == null) {
-			value = defaultValue;
-		}
-		return value;
-	}
-
-	public int attr(String attriName, int defaultValue) {
-		String attrValue = element.getAttribute(attriName);
-		if (attrValue == null || attrValue.trim().length() == 0) {
-			return defaultValue;
-		}
-		return Integer.parseInt(attrValue);
-	}
-
-	public Integer attrAsInt(String attriName) {
-		String attrValue = element.getAttribute(attriName);
-		if (attrValue == null || attrValue.trim().length() == 0) {
-			return null;
-		}
-		return Integer.parseInt(attrValue);
 	}
 
 	public ConfigElement[] getChildren() {
@@ -200,36 +164,17 @@ public class XmlConfigElement implements ConfigElement {
 		return value;
 	}
 
+	@Override
 	public ClassLoader getClassLoader() {
 		return this.classLoader;
 	}
 
-	public boolean attr(String attriName, boolean defaultValue) {
-		String attrValue = element.getAttribute(attriName);
-		if (attrValue == null || attrValue.trim().length() == 0) {
-			return defaultValue;
-		}
-		return Boolean.parseBoolean(attrValue);
-	}
+    @Override
+    public <T> T asObject(Class<T> clazz) throws BusinessException {
+        throw new UnsupportedOperationException("XmlConfigElement can't as Object!");
+    }
 
-	public Boolean attrAsBoolean(String attriName) {
-		String attrValue = element.getAttribute(attriName);
-		if (attrValue == null || attrValue.trim().length() == 0) {
-			return null;
-		}
-		return Boolean.parseBoolean(attrValue);
-	}
-
-	@SuppressWarnings("unchecked")
-	public <T> T attr(String attriName, Class<T> clazz) throws BusinessException {
-		String attrValue = element.getAttribute(attriName);
-		if (attrValue == null || attrValue.trim().length() == 0) {
-			return null;
-		}
-		return (T) createObject(attriName);
-	}
-
-	public ConfigElement getChild(String eleName) throws BusinessException {
+    public ConfigElement getChild(String eleName) throws BusinessException {
 		ConfigElement[] childElements = getChildren(eleName);
 		if (childElements != null && childElements.length > 0) {
 			if (childElements.length > 1) {
@@ -239,7 +184,7 @@ public class XmlConfigElement implements ConfigElement {
 				}
 				throw new BusinessException(ErrorCodes.CONFIG_ERROR)
 						.put("childrenElementName", eleName)
-						.put("element", getXml())
+						.put("element", asText())
 						.setMessage("Children Elment must NOT more than one");
 			}
 			return childElements[0];
@@ -247,19 +192,13 @@ public class XmlConfigElement implements ConfigElement {
 		return null;
 	}
 
-	public String getChildText(String eleName) throws BusinessException {
-		ConfigElement c = getChild(eleName);
-		if (c == null) {
-			return null;
-		}
-		return c.getValue();
-	}
+
 
 	public String getName() {
 		return element.getTagName();
 	}
 
-	public String getXml() {
+	public String asText() {
 		return toString(0);
 	}
 

@@ -26,6 +26,7 @@
         <module>commons-hi</module>
         <module>commons-test</module>
         <module>commons-dsql</module>
+        <module>commons-armq</module>
         <!--<module>commons-reflux</module>-->
         <!--<module>commons-api2page</module>-->
     </modules>
@@ -34,7 +35,7 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
         <java.version>1.8</java.version>
-        <jackson.version>2.8.8</jackson.version>
+        <jackson.version>2.10.1</jackson.version>
         <shiro.version>1.2.3</shiro.version>
     </properties>
 
@@ -337,6 +338,12 @@
                 <artifactId>redisson</artifactId>
                 <version>3.6.5</version>
             </dependency>
+
+            <dependency>
+                <groupId>org.projectlombok</groupId>
+                <artifactId>lombok</artifactId>
+                <version>1.18.8</version>
+            </dependency>
         </dependencies>
     </dependencyManagement>
 
@@ -354,6 +361,13 @@
         <dependency>
             <groupId>junit</groupId>
             <artifactId>junit</artifactId>
+        </dependency>
+
+        <!-- 支持 lombok -->
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <version>1.18.8</version>
         </dependency>
         <!--<dependency>-->
         <!--<groupId>org.jetbrains.kotlin</groupId>-->
